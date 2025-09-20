@@ -53,6 +53,33 @@ function fallbackImageExt(ct: string | null): string {
   return '.jpg'
 }
 
+function videoMimeFromExt(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case '.mp4':
+      return 'video/mp4'
+    case '.webm':
+      return 'video/webm'
+    case '.mov':
+      return 'video/quicktime'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
+function imageMimeFromExt(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg'
+    case '.png':
+      return 'image/png'
+    case '.webp':
+      return 'image/webp'
+    default:
+      return 'application/octet-stream'
+  }
+}
+
 async function ensureDirs() {
   for (const dir of [BASE_DIR, VIDEOS_DIR, IMAGES_DIR, DATA_DIR]) {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
@@ -75,9 +102,9 @@ export default defineEventHandler(async (event) => {
     await ensureDirs()
 
     // 1) Fetch dataset items
-    const items = await $fetch<any[]>(
-      'https://api.apify.com/v2/datasets/xACE0vd7QjtiPPOIB/items?format=json&clean=true'
-    )
+    const DATASET_ID = process.env.APIFY_DATASET_ID || 'EQ72boqcTz81HGI9Y'
+    const DATASET_URL = `https://api.apify.com/v2/datasets/${DATASET_ID}/items?format=json&clean=true`
+    const items = await $fetch<any[]>(DATASET_URL)
 
     // Optional limit
     const q = getQuery(event)

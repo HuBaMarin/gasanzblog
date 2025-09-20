@@ -34,7 +34,9 @@ export default defineEventHandler(async (event) => {
     }
 
     try {
-      const items = await $fetch<any[]>('https://api.apify.com/v2/datasets/xACE0vd7QjtiPPOIB/items?format=json&clean=true')
+      const DATASET_ID = process.env.APIFY_DATASET_ID || 'EQ72boqcTz81HGI9Y'
+      const DATASET_URL = `https://api.apify.com/v2/datasets/${DATASET_ID}/items?format=json&clean=true`
+      const items = await $fetch<any[]>(DATASET_URL)
       setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
       return { success: true, mostLiked: toResponse(items), cached: false }
     } catch {
