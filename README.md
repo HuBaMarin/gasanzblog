@@ -1,75 +1,66 @@
-# Nuxt Minimal Starter
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+# Parroquia Santa Cruz Murialdo
 
-## Setup
+Sitio web de la Parroquia Santa Cruz Murialdo construido con Nuxt 4 y Vue 3. Incluye páginas informativas, área de eventos con vídeos/imágenes y páginas legales básicas.
 
-Make sure to install dependencies:
+
+## Secciones principales
+
+- Inicio (`/`)
+- Actividades (`/actividades`)
+- Eventos (`/eventos`)
+- Entorno seguro (`/entorno-seguro`)
+- Aviso legal (`/aviso-legal`)
+- Privacidad (`/privacidad`)
+- Cookies (`/cookies`)
+- Contacto (`/contacto`)
+
+## Tecnologías
+
+- Nuxt 4, Vue 3, Vite
+- Estilos: CSS
+
+## Requisitos
+
+- Node.js >= 18.20
+- pnpm
+
+## Puesta en marcha
+
+Instalar dependencias:
 
 ```bash
-# npm
-npm install
-
 # pnpm
 pnpm install
 
-# yarn
-yarn install
-
-# bun
-bun install
+# npm
+npm install
 ```
 
-## Development Server
-
-Start the development server on `http://localhost:3000`:
 
 ```bash
-# npm
-npm run dev
-
 # pnpm
 pnpm dev
 
-# yarn
-yarn dev
-
-# bun
-bun run dev
-```
-
-## Production
-
-Build the application for production:
-
-```bash
 # npm
-npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
+npm run dev
 ```
 
-Locally preview production build:
 
-```bash
-# npm
-npm run preview
+## Estructura del proyecto
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+- `app/`
+  - `pages/`: páginas del sitio (rutas)
+  - `components/`: componentes compartidos (`SiteHeader.vue`, `SiteFooter.vue`, ...)
+  - `app.config.ts`: metadatos del sitio (nombre, URLs, navegación, redes)
+- `server/api/`
+  - `data.get.ts`: API para obtener datos de eventos más populares
+  - `media/sync.get.ts`: sincroniza y cachea medios locales (vídeo/imagen) y datos
+  - `media/image/[filename].get.ts`: sirve imágenes cacheadas con cabeceras de caché
+  - `media/video/[filename].get.ts`: sirve vídeo cacheado con soporte de rangos (streaming)
+- `storage/cache/instagram/`: caché local de datos y medios
+  - `data/`: instantáneas JSON
+  - `images/`: miniaturas
+  - `videos/`: ficheros de vídeo
+- `public/`: assets estáticos públicos
+- `nuxt.config.ts`: configuración de Nuxt (módulos, `runtimeConfig`, `routeRules`)
