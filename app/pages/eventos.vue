@@ -167,7 +167,7 @@ function onVideoError(ev: Event, post: Post): void {
 async function syncNow() {
   try {
     syncing.value = true
-    await $fetch('/api/instagram/sync')
+    await $fetch('/api/media/sync')
     await refresh()
   } catch (e) {
     console.error('Error al sincronizar:', e)
