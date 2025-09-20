@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import crypto from 'node:crypto'
 import { put } from '@vercel/blob'
+import sharp from 'sharp'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 
@@ -237,40 +238,37 @@ export default defineEventHandler(async (event) => {
 
       if (item.displayUrl) {
         try {
-          let ext = urlExt(item.displayUrl) || '.jpg'
-          let filename = `${baseId}_thumb${ext}`
-          let fullPath = join(IMAGES_DIR, filename)
+          // Always generate a WebP thumbnail at reduced width for better performance
+          const targetWidth = 384
+          const filenameWebp = `${baseId}_thumb.webp`
+          const fullPathWebp = join(IMAGES_DIR, filenameWebp)
 
-          if (!existsSync(fullPath)) {
+          if (!existsSync(fullPathWebp)) {
             const res = await fetch(item.displayUrl, { headers: IG_FETCH_HEADERS })
             if (!res.ok) throw new Error(`Image HTTP ${res.status}`)
 
-            if (!urlExt(item.displayUrl)) {
-              const ct = res.headers.get('content-type')
-              ext = fallbackImageExt(ct)
-              filename = `${baseId}_thumb${ext}`
-              fullPath = join(IMAGES_DIR, filename)
-            }
-
             const ab = await res.arrayBuffer()
             const buf = Buffer.from(ab)
+            const webpBuf = await sharp(buf)
+              .resize({ width: targetWidth, withoutEnlargement: true })
+              .webp({ quality: 72 })
+              .toBuffer()
+
             if (useBlobStorage()) {
-              const key = `instagram/images/${filename}`
-              await put(key, buf, {
+              const key = `instagram/images/${filenameWebp}`
+              await put(key, webpBuf, {
                 access: 'public',
-                contentType: imageMimeFromExt(ext),
+                contentType: 'image/webp',
                 token: process.env.BLOB_READ_WRITE_TOKEN,
                 addRandomSuffix: false,
               })
             } else {
-              await writeFile(fullPath, buf)
+              await writeFile(fullPathWebp, webpBuf)
             }
-            // Always prefer local API path
-            item.localDisplayUrl = `/api/media/image/${filename}`
           }
-          if (!item.localDisplayUrl) {
-            item.localDisplayUrl = `/api/media/image/${filename}`
-          }
+
+          // Always prefer local API path
+          item.localDisplayUrl = `/api/media/image/${filenameWebp}`
         } catch (err) {
           console.error(`Failed to download image for item ${item.id || baseId}:`, err)
         }

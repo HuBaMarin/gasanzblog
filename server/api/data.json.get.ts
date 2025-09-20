@@ -53,7 +53,7 @@ async function listFilenames(prefix: string, token?: string): Promise<Map<string
 
 function withLocalPaths(items: any[], blobVideos?: Map<string, string>, blobImages?: Map<string, string>): any[] {
   const videoExts = ['.mp4', '.webm', '.mov']
-  const imageExts = ['.jpg', '.jpeg', '.png', '.webp']
+  const imageExts = ['.webp', '.jpg', '.jpeg', '.png']
   return items.map((it) => {
     const item = { ...it }
     const baseId = safeBaseId(item)

@@ -53,7 +53,7 @@ async function listFilenames(prefix: string, token?: string): Promise<Map<string
 
 function withLocalPaths(items: any[], blobVideos?: Map<string, string>, blobImages?: Map<string, string>): any[] {
   const videoExts = ['.mp4', '.webm', '.mov']
-  const imageExts = ['.jpg', '.jpeg', '.png', '.webp']
+  const imageExts = ['.webp', '.jpg', '.jpeg', '.png']
   return items.map((it) => {
     const item = { ...it }
     const baseId = safeBaseId(item)
@@ -70,8 +70,8 @@ function withLocalPaths(items: any[], blobVideos?: Map<string, string>, blobImag
         if (blobVideos && blobVideos.size) {
           const match = Array.from(blobVideos.keys()).find((n) => n === fname || (n.startsWith(`${baseId}_video-`) && n.toLowerCase().endsWith(ext.toLowerCase())))
           if (match) {
-            // Use direct Blob URL so it works on static hosting without server endpoints
-            item.localVideoUrl = blobVideos.get(match) || `/api/media/video/${match}`
+            // Prefer our proxy endpoint so we can set headers like Content-Disposition
+            item.localVideoUrl = `/api/media/video/${match}`
             break
           }
         }

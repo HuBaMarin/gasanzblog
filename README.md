@@ -13,7 +13,6 @@ Sitio web de la Parroquia Santa Cruz Murialdo construido con Nuxt 4 y Vue 3. Inc
 - Aviso legal (`/aviso-legal`)
 - Privacidad (`/privacidad`)
 - Cookies (`/cookies`)
-- Contacto (`/contacto`)
 
 ## Tecnologías
 
@@ -51,16 +50,16 @@ npm run dev
 
 - `app/`
   - `pages/`: páginas del sitio (rutas)
-  - `components/`: componentes compartidos (`SiteHeader.vue`, `SiteFooter.vue`, ...)
+  - `components/`: componentes compartidos
   - `app.config.ts`: metadatos del sitio (nombre, URLs, navegación, redes)
 - `server/api/`
   - `data.get.ts`: API para obtener datos de eventos más populares
   - `media/sync.get.ts`: sincroniza y cachea medios locales (vídeo/imagen) y datos
-  - `media/image/[filename].get.ts`: sirve imágenes cacheadas con cabeceras de caché
-  - `media/video/[filename].get.ts`: sirve vídeo cacheado con soporte de rangos (streaming)
+  - `media/image/[filename].get.ts`: sirve imágenes
+  - `media/video/[filename].get.ts`: sirve vídeo 
 - `storage/cache/instagram/`: caché local de datos y medios
   - `data/`: instantáneas JSON
   - `images/`: miniaturas
   - `videos/`: ficheros de vídeo
 - `public/`: assets estáticos públicos
-- `nuxt.config.ts`: configuración de Nuxt (módulos, `runtimeConfig`, `routeRules`)
+- `nuxt.config.ts`: configuración

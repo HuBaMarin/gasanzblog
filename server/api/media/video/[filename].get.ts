@@ -89,6 +89,7 @@ export default defineEventHandler(async (event) => {
       if (!pass['Cache-Control']) pass['Cache-Control'] = 'public, max-age=31536000, immutable'
       pass['Vary'] = pass['Vary'] ? pass['Vary'] + ', Range' : 'Range'
 
+      if (!pass['Content-Disposition']) pass['Content-Disposition'] = 'inline'
       setResponseHeaders(event, pass)
       event.node.res.statusCode = res.status
       if (event.node.req.method === 'HEAD' || !res.body) return null
@@ -108,6 +109,7 @@ export default defineEventHandler(async (event) => {
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'public, max-age=31536000, immutable',
     'Content-Type': contentType,
+    'Content-Disposition': 'inline',
   })
 
   if (range) {

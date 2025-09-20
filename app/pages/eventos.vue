@@ -38,6 +38,9 @@
             :src="getVideoUrl(post)"
             :poster="getPosterUrl(post)"
             controls
+            controlslist="nodownload noplaybackrate"
+            disablepictureinpicture
+            @contextmenu.prevent
             playsinline
             muted
             preload="none"

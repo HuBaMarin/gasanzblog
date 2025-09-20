@@ -77,6 +77,7 @@ export default defineEventHandler(async (event) => {
         if (v) pass[proper] = v
       }
       if (!pass['Cache-Control']) pass['Cache-Control'] = 'public, max-age=31536000, immutable'
+      if (!pass['Content-Disposition']) pass['Content-Disposition'] = 'inline'
 
       setResponseHeaders(event, pass)
       if (event.node.req.method === 'HEAD' || !res.body) return null
@@ -91,6 +92,7 @@ export default defineEventHandler(async (event) => {
   setResponseHeaders(event, {
     'Cache-Control': 'public, max-age=31536000, immutable',
     'Content-Type': contentType,
+    'Content-Disposition': 'inline',
   })
 
   return sendStream(event, createReadStream(filePath))
