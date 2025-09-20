@@ -1,10 +1,12 @@
 // server/api/instagram/sync.get.ts
 import { defineEventHandler, createError, getQuery } from 'h3'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile, unlink, readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import crypto from 'node:crypto'
 import { put } from '@vercel/blob'
+import ffmpegStatic from 'ffmpeg-static'
+import { spawn } from 'node:child_process'
 
 function getBaseDir() {
   const envDir = process.env.MEDIA_CACHE_DIR
@@ -17,8 +19,17 @@ const BASE_DIR = getBaseDir()
 const VIDEOS_DIR = join(BASE_DIR, 'videos')
 const IMAGES_DIR = join(BASE_DIR, 'images')
 const DATA_DIR = join(BASE_DIR, 'data')
+const TMP_DIR = join(BASE_DIR, 'tmp')
 
-// Some Instagram CDNs reject requests without a "browser-like" UA + referer
+function getFfmpegPath(): string {
+  return (typeof ffmpegStatic === 'string' && ffmpegStatic) ? ffmpegStatic : 'ffmpeg'
+}
+
+function useBlobStorage(): boolean {
+  // Prefer LOCAL by default. Set MEDIA_STORAGE=blob to upload to Vercel Blob.
+  return String(process.env.MEDIA_STORAGE || '').toLowerCase() === 'blob'
+}
+
 const IG_FETCH_HEADERS = {
   'user-agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -31,7 +42,6 @@ function urlExt(url: string): string {
   try {
     const u = new URL(url)
     const e = extname(u.pathname).toLowerCase()
-    // guard against absurd ext lengths (e.g. path tricks)
     return e && e.length <= 5 ? e : ''
   } catch {
     return ''
@@ -81,9 +91,39 @@ function imageMimeFromExt(ext: string): string {
 }
 
 async function ensureDirs() {
-  for (const dir of [BASE_DIR, VIDEOS_DIR, IMAGES_DIR, DATA_DIR]) {
+  for (const dir of [BASE_DIR, VIDEOS_DIR, IMAGES_DIR, DATA_DIR, TMP_DIR]) {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
   }
+}
+
+async function compressToMp4(inputPath: string, outputPath: string): Promise<void> {
+  // Transcode to H.264 + AAC, limit width to 1280, keep aspect, and enable faststart for progressive streaming
+  const bin = getFfmpegPath()
+  const args = [
+    '-y',
+    '-hide_banner',
+    '-i', inputPath,
+    '-vf', 'scale=min(1280,iw):-2:flags=lanczos',
+    '-movflags', '+faststart',
+    '-vcodec', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '28',
+    '-pix_fmt', 'yuv420p',
+    '-acodec', 'aac',
+    '-b:a', '128k',
+    outputPath,
+  ]
+
+  await new Promise<void>((resolve, reject) => {
+    const proc = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    let stderr = ''
+    proc.stderr.on('data', (d) => { stderr += d?.toString?.() || '' })
+    proc.on('error', (err) => reject(err))
+    proc.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`ffmpeg exited with code ${code}: ${stderr.slice(0, 2000)}`))
+    })
+  })
 }
 
 function safeBaseId(item: any): string {
@@ -101,9 +141,7 @@ export default defineEventHandler(async (event) => {
   try {
     await ensureDirs()
 
-    // 1) Fetch dataset items
-    const DATASET_ID = process.env.APIFY_DATASET_ID || 'EQ72boqcTz81HGI9Y'
-    const DATASET_URL = `https://api.apify.com/v2/datasets/${DATASET_ID}/items?format=json&clean=true`
+    const DATASET_URL = `https://api.apify.com/v2/datasets/EQ72boqcTz81HGI9Y/items?format=json&clean=true`
     const items = await $fetch<any[]>(DATASET_URL)
 
     // Optional limit
@@ -121,39 +159,55 @@ export default defineEventHandler(async (event) => {
       // VIDEO
       if (item.videoUrl) {
         try {
-          // Prefer URL ext if present, otherwise decide after fetch via content-type
-          let ext = urlExt(item.videoUrl) || '.mp4'
-          let filename = `${baseId}_video${ext}`
-          let fullPath = join(VIDEOS_DIR, filename)
+          // Determine input extension for temp file
+          let inExt = urlExt(item.videoUrl) || '.mp4'
+          const outExt = '.mp4'
+          let filename = `${baseId}_video${outExt}`
+          let fullOutPath = join(VIDEOS_DIR, filename)
 
-          if (!existsSync(fullPath)) {
+          if (!existsSync(fullOutPath)) {
             const res = await fetch(item.videoUrl, { headers: IG_FETCH_HEADERS })
             if (!res.ok) throw new Error(`Video HTTP ${res.status}`)
 
-            // Adjust extension if URL had no extension
+            // Adjust temp input extension based on content-type if URL had no extension
             if (!urlExt(item.videoUrl)) {
               const ct = res.headers.get('content-type')
-              ext = fallbackVideoExt(ct)
-              filename = `${baseId}_video${ext}`
-              fullPath = join(VIDEOS_DIR, filename)
+              inExt = fallbackVideoExt(ct)
             }
 
             const ab = await res.arrayBuffer()
             const buf = Buffer.from(ab)
 
-            const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
-            if (USE_BLOB) {
+            // Write temp input file
+            const tmpInput = join(TMP_DIR, `${baseId}_src${inExt}`)
+            await writeFile(tmpInput, buf)
+
+            // Try to compress to mp4
+            let producedPath = fullOutPath
+            try {
+              await compressToMp4(tmpInput, fullOutPath)
+            } catch (e) {
+              console.warn(`ffmpeg compression failed for ${baseId}, falling back to original:`, e)
+              // Fallback: save original with its own extension
+              filename = `${baseId}_video${inExt}`
+              producedPath = join(VIDEOS_DIR, filename)
+              await writeFile(producedPath, buf)
+            } finally {
+              // Cleanup temp input
+              try { await unlink(tmpInput) } catch {}
+            }
+
+            if (useBlobStorage()) {
               const key = `instagram/videos/${filename}`
-              const uploaded = await put(key, buf, {
+              const outBuf = await readFile(producedPath)
+              await put(key, outBuf, {
                 access: 'public',
-                contentType: videoMimeFromExt(ext),
+                contentType: videoMimeFromExt(extname(filename)),
                 token: process.env.BLOB_READ_WRITE_TOKEN,
               })
-              item.localVideoUrl = uploaded.url
-            } else {
-              await writeFile(fullPath, buf)
-              item.localVideoUrl = `/api/media/video/${filename}`
             }
+            // Always prefer local API path (served by our domain)
+            item.localVideoUrl = `/api/media/video/${filename}`
           }
           if (!item.localVideoUrl) {
             // If file existed and we didn't upload just now, fallback to local API path
@@ -164,7 +218,6 @@ export default defineEventHandler(async (event) => {
         }
       }
 
-      // IMAGE/THUMBNAIL
       if (item.displayUrl) {
         try {
           let ext = urlExt(item.displayUrl) || '.jpg'
@@ -184,19 +237,18 @@ export default defineEventHandler(async (event) => {
 
             const ab = await res.arrayBuffer()
             const buf = Buffer.from(ab)
-            const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
-            if (USE_BLOB) {
+            if (useBlobStorage()) {
               const key = `instagram/images/${filename}`
-              const uploaded = await put(key, buf, {
+              await put(key, buf, {
                 access: 'public',
                 contentType: imageMimeFromExt(ext),
                 token: process.env.BLOB_READ_WRITE_TOKEN,
               })
-              item.localDisplayUrl = uploaded.url
             } else {
               await writeFile(fullPath, buf)
-              item.localDisplayUrl = `/api/media/image/${filename}`
             }
+            // Always prefer local API path
+            item.localDisplayUrl = `/api/media/image/${filename}`
           }
           if (!item.localDisplayUrl) {
             item.localDisplayUrl = `/api/media/image/${filename}`
@@ -209,13 +261,11 @@ export default defineEventHandler(async (event) => {
       processedItems.push(item)
     }
 
-    // 3) Save data snapshot
     const dataJson = JSON.stringify(processedItems, null, 2)
     const dataFilename = `data_${Date.now()}.json`
     await writeFile(join(DATA_DIR, dataFilename), dataJson)
     await writeFile(join(DATA_DIR, 'latest.json'), dataJson)
 
-    // Also publish latest.json to Vercel Blob if available for cross-instance access
     try {
       const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
       if (USE_BLOB) {

@@ -2,6 +2,8 @@ import { defineEventHandler, getRouterParam, createError, sendStream, setRespons
 import { stat } from 'node:fs/promises'
 import { createReadStream, existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
+import { list } from '@vercel/blob'
+import { Readable } from 'node:stream'
 
 function getBaseDir() {
   const envDir = process.env.MEDIA_CACHE_DIR
@@ -30,7 +32,53 @@ export default defineEventHandler(async (event) => {
   if (!filename) throw createError({ statusCode: 400, statusMessage: 'Missing filename' })
 
   const filePath = join(VIDEOS_DIR, filename)
-  if (!existsSync(filePath)) throw createError({ statusCode: 404, statusMessage: 'Not found' })
+  const range = event.node.req.headers.range
+
+  // Fallback to Blob if local file doesn't exist (for serverless/ephemeral fs)
+  if (!existsSync(filePath)) {
+    try {
+      const token = process.env.BLOB_READ_WRITE_TOKEN
+      const key = `instagram/videos/${filename}`
+      const blobs = await list({ prefix: key, token: token || undefined })
+      const blob = blobs.blobs?.[0]
+      if (!blob?.url) throw new Error('Blob not found')
+
+      const headers: Record<string, string> = {
+        accept: 'video/mp4,video/*;q=0.9,*/*;q=0.7',
+      }
+      if (typeof range === 'string' && range.trim() !== '') headers['range'] = range
+
+      const res = await fetch(blob.url, { headers })
+      if (!res.ok && res.status !== 206) {
+        throw createError({ statusCode: res.status || 502, statusMessage: `Upstream error ${res.status}` })
+      }
+
+      const pass: Record<string, string> = {}
+      const headerMap: Record<string, string> = {
+        'accept-ranges': 'Accept-Ranges',
+        'content-type': 'Content-Type',
+        'content-length': 'Content-Length',
+        'content-range': 'Content-Range',
+        etag: 'ETag',
+        'last-modified': 'Last-Modified',
+        'cache-control': 'Cache-Control',
+      }
+      for (const [lower, proper] of Object.entries(headerMap)) {
+        const v = res.headers.get(lower)
+        if (v) pass[proper] = v
+      }
+      if (!pass['Cache-Control']) pass['Cache-Control'] = 'public, max-age=31536000, immutable'
+      pass['Vary'] = pass['Vary'] ? pass['Vary'] + ', Range' : 'Range'
+
+      setResponseHeaders(event, pass)
+      event.node.res.statusCode = res.status
+      if (event.node.req.method === 'HEAD' || !res.body) return null
+      const nodeStream = Readable.fromWeb(res.body as any)
+      return sendStream(event, nodeStream)
+    } catch (e) {
+      throw createError({ statusCode: 404, statusMessage: 'Not found' })
+    }
+  }
 
   const fileStat = await stat(filePath)
   const fileSize = fileStat.size
@@ -43,7 +91,6 @@ export default defineEventHandler(async (event) => {
     'Content-Type': contentType,
   })
 
-  const range = event.node.req.headers.range
   if (range) {
     const match = /^bytes=(\d*)-(\d*)$/.exec(range)
     if (!match) throw createError({ statusCode: 416, statusMessage: 'Invalid range' })

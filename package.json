@@ -21,6 +21,7 @@
     "@nuxt/ui": "^3.3.4",
     "@nuxtjs/color-mode": "^3.5.2",
     "@twicpics/components": "^0.33.0",
+    "ffmpeg-static": "^5.2.0",
     "eslint": "^9.35.0",
     "nuxt": "^4.1.2",
     "sharp": "^0.34.4",
