@@ -28,19 +28,19 @@ export default defineNuxtConfig({
     }
   },
 
-  // Nitro: compress static/public assets in production
   nitro: {
     compressPublicAssets: true,
     compatibilityDate: '2025-09-20'
   },
 
-  // Prerender key static routes for faster delivery
   routeRules: {
     '/': { prerender: true },
     '/aviso-legal': { prerender: true },
     '/privacidad': { prerender: true },
     '/cookies': { prerender: true },
     '/entorno-seguro': { prerender: true },
+    '/eventos': { isr: { expiration: 300 } },
+    '/api/data': { cache: { maxAge: 300, swr: true } },
     '/zona-segura': { redirect: { to: '/entorno-seguro', statusCode: 301 } }
   },
 

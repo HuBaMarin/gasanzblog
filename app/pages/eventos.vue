@@ -10,14 +10,6 @@
 
         <div class="spacer"></div>
 
-        <button
-          v-if="isAdmin"
-          class="btn"
-          :disabled="syncing"
-          @click="syncNow"
-        >
-          {{ syncing ? 'Sincronizando…' : 'Sincronizar ahora' }}
-        </button>
 
         
       </div>
@@ -44,11 +36,11 @@
           <video
             v-if="getVideoUrl(post)"
             :src="getVideoUrl(post)"
-            :poster="getImageUrl(post)"
+            :poster="getPosterUrl(post)"
             controls
             playsinline
             muted
-            preload="metadata"
+            preload="none"
             class="video"
             @error="onVideoError($event, post)"
           />
@@ -109,39 +101,35 @@ interface Post {
   timestamp: string
 }
 
-const isAdmin = ref(false) // Cambia según tu sistema de auth
 const syncing = ref(false)
 
 const { data, pending, error, refresh } = await useFetch<{
   success: boolean
   mostLiked: Post[]
   cached: boolean
-}>('/api/data?limit=30', {
-  server: true, // Renderiza en SSR si está disponible
-  lazy: true,   // Muestra el skeleton y carga
+}>('/api/data?limit=12', {
+  server: true, 
+  lazy: true,   
 })
 
 const posts = computed(() => data.value?.mostLiked || [])
 
-// Preferimos usar archivos locales (localVideoUrl/localDisplayUrl).
 const videoPosts = computed(() =>
-  posts.value.filter(p => p.type === 'Video' && (p.localVideoUrl || p.videoUrl))
+  posts.value.filter(p => p.type === 'Video' && p.localVideoUrl && p.localDisplayUrl)
 )
-
-// URLs auxiliares
 function getVideoUrl(post: Post): string {
-  if (post.localVideoUrl) return post.localVideoUrl
-  if (post.videoUrl) return proxy(post.videoUrl)
-  return ''
+  return post.localVideoUrl || ''
 }
 
 function getImageUrl(post: Post): string {
-  if (post.localDisplayUrl) return post.localDisplayUrl
-  return proxy(post.displayUrl)
+  return post.localDisplayUrl || ''
 }
 
-function proxy(url: string): string {
-  return `/api/proxy?url=${encodeURIComponent(url)}`
+const $img = useImage()
+function getPosterUrl(post: Post): string {
+  const src = getImageUrl(post)
+  if (!src) return ''
+  return $img(src, { width: 640, format: 'webp', quality: 75 })
 }
 
 function formatDate(dateString: string): string {
@@ -157,23 +145,6 @@ function formatDate(dateString: string): string {
 function onVideoError(ev: Event, post: Post): void {
   const el = ev.target as HTMLVideoElement
   if (!el) return
-  if (post.videoUrl) {
-    el.src = proxy(post.videoUrl)
-    el.load()
-    el.play?.().catch(() => {})
-  }
-}
-
-async function syncNow() {
-  try {
-    syncing.value = true
-    await $fetch('/api/media/sync')
-    await refresh()
-  } catch (e) {
-    console.error('Error al sincronizar:', e)
-  } finally {
-    syncing.value = false
-  }
 }
 
 useSeoMeta({
@@ -380,7 +351,6 @@ html[data-theme="dark"] .skeletonLine {
   100% { background-position: -200% 0; }
 }
 
-/* Error States */
 .errorBox {
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -396,7 +366,6 @@ html[data-theme="dark"] .errorBox {
   color: #fecaca;
 }
 
-/* Posts Grid */
 .postsGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -429,7 +398,6 @@ html[data-theme="dark"] .card:hover {
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
 }
 
-/* Video Container - Fixed Size */
 .videoContainer {
   position: relative;
   background: #000;
@@ -451,7 +419,6 @@ html[data-theme="dark"] .card:hover {
   transform: scale(1.02);
 }
 
-/* Card Content */
 .cardFooter {
   padding: 1rem;
   flex: 1;
