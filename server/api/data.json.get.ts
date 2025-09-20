@@ -128,7 +128,7 @@ export default defineEventHandler(async (event) => {
       const blob = blobs.blobs?.[0]
       if (blob?.url) {
         const items = await $fetch<any[]>(blob.url, { headers: { accept: 'application/json' } })
-        setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
+        setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300', 'Content-Type': 'application/json; charset=utf-8' })
         return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: true }
       }
     } catch (e) {
@@ -138,16 +138,16 @@ export default defineEventHandler(async (event) => {
     try {
       const DATASET_URL = `https://api.apify.com/v2/datasets/EQ72boqcTz81HGI9Y/items?format=json&clean=true`
       const items = await $fetch<any[]>(DATASET_URL)
-      setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
+      setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300', 'Content-Type': 'application/json; charset=utf-8' })
       return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: false }
     } catch {
-      setResponseHeaders(event, { 'Cache-Control': 'public, max-age=60' })
+      setResponseHeaders(event, { 'Cache-Control': 'public, max-age=60', 'Content-Type': 'application/json; charset=utf-8' })
       return { success: true, mostLiked: [], cached: false }
     }
   }
 
   const raw = await readFile(LATEST_PATH, 'utf-8')
   const items = JSON.parse(raw)
-  setResponseHeaders(event, { 'Cache-Control': 'public, max-age=120' })
+  setResponseHeaders(event, { 'Cache-Control': 'public, max-age=120', 'Content-Type': 'application/json; charset=utf-8' })
   return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: true }
 })

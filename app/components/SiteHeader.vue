@@ -93,12 +93,10 @@ function toggleColorMode() {
   colorMode.preference = isDark.value ? 'light' : 'dark'
 }
 
-// Contact from runtime config
 const config = useRuntimeConfig()
 const contactEmail = config.public.contactEmail as string
 const contactPhone = config.public.contactPhone as string
 const humanPhone = computed(() => {
-  // beautify common ES format +34XXXXXXXXX -> 626 915 018
   const digits = (contactPhone || '').replace(/[^0-9]/g, '')
   if (digits.length >= 9) {
     return `${digits.slice(-9, -6)} ${digits.slice(-6, -3)} ${digits.slice(-3)}`
@@ -106,15 +104,12 @@ const humanPhone = computed(() => {
   return contactPhone
 })
 
-// Mobile state
 const mobileOpen = ref(false)
 const isMobile = ref(false)
 
-// Close menu on route change
 const route = useRoute()
 watch(() => route.fullPath, () => { mobileOpen.value = false })
 
-// Track viewport to ensure mobile menu is only used on mobile
 let mql: MediaQueryList | null = null
 function updateIsMobile() {
   if (!mql) return
@@ -127,7 +122,6 @@ onMounted(() => {
     mql = window.matchMedia('(max-width: 1023.98px)')
     mql.addEventListener('change', updateIsMobile)
     updateIsMobile()
-    // Close on Escape key
     window.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Escape') mobileOpen.value = false
     })

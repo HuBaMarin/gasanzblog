@@ -101,13 +101,12 @@ interface Post {
   timestamp: string
 }
 
-const syncing = ref(false)
 
-const { data, pending, error, refresh } = await useFetch<{
+const { data, pending, error } = await useFetch<{
   success: boolean
   mostLiked: Post[]
   cached: boolean
-}>('/api/data?limit=30', {
+}>('/api/data.json', {
   server: true, 
   lazy: true,   
 })
@@ -125,11 +124,11 @@ function getImageUrl(post: Post): string {
   return post.localDisplayUrl || ''
 }
 
-const $img = useImage()
 function getPosterUrl(post: Post): string {
+  // Return the original image URL directly to avoid requiring a server-side image transformer
   const src = getImageUrl(post)
   if (!src) return ''
-  return $img(src, { width: 640, format: 'webp', quality: 75 })
+  return src
 }
 
 function formatDate(dateString: string): string {

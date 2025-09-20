@@ -8,7 +8,6 @@ export default defineNuxtConfig({
     '@nuxt/ui',
     '@nuxtjs/color-mode',
   ],
-  // Public/Private runtime configuration
   runtimeConfig: {
     public: {
       contactEmail: 'info.leonardo@murialdo.net',
@@ -16,7 +15,6 @@ export default defineNuxtConfig({
     }
   },
 
-  // Nuxt Image configuration for better performance
   image: {
     quality: 80,
     screens: {
@@ -30,7 +28,10 @@ export default defineNuxtConfig({
 
   nitro: {
     compressPublicAssets: true,
-    compatibilityDate: '2025-09-20'
+    compatibilityDate: '2025-09-20',
+    prerender: {
+      routes: ['/api/data', '/api/data.json']
+    }
   },
 
   routeRules: {
@@ -40,7 +41,8 @@ export default defineNuxtConfig({
     '/cookies': { prerender: true },
     '/entorno-seguro': { prerender: true },
     '/eventos': { isr: { expiration: 300 } },
-    '/api/data': { cache: { maxAge: 300, swr: true } },
+    '/api/data': { prerender: true, cache: { maxAge: 300, swr: true } },
+    '/api/data.json': { prerender: true, cache: { maxAge: 300, swr: true } },
     '/zona-segura': { redirect: { to: '/entorno-seguro', statusCode: 301 } }
   },
 
