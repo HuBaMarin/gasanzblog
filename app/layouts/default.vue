@@ -2,7 +2,6 @@
   <Html :lang="'es'" :data-theme="$colorMode.value">
     <Body>
       <div class="layout-root">
-        <a href="#main" class="skip-link">Saltar al contenido principal</a>
         <!-- Header with navigation -->
         <SiteHeader />
 
@@ -78,25 +77,6 @@ html[data-theme="dark"] .site-title-bar {
 
 html[data-theme="dark"] .site-title {
   color: #f1f5f9;
-}
-
-/* Skip link for accessibility */
-.skip-link {
-  position: absolute;
-  top: -40px;
-  left: 0;
-  background: #2563eb;
-  color: white;
-  padding: 8px 16px;
-  text-decoration: none;
-  z-index: 1000;
-  border-radius: 0 0 4px 0;
-  font-weight: 500;
-  transition: all 0.2s ease;
-}
-
-.skip-link:focus {
-  top: 0;
 }
 
 /* Main content area */

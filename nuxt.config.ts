@@ -30,7 +30,7 @@ export default defineNuxtConfig({
     compressPublicAssets: true,
     compatibilityDate: '2025-09-20',
     prerender: {
-      routes: ['/api/data', '/api/data.json']
+      routes: ['/api/data', '/api/data.json', '/eventos']
     }
   },
 
@@ -40,7 +40,7 @@ export default defineNuxtConfig({
     '/privacidad': { prerender: true },
     '/cookies': { prerender: true },
     '/entorno-seguro': { prerender: true },
-    '/eventos': { isr: { expiration: 300 } },
+    '/eventos': { prerender: true },
     '/api/data': { prerender: true, cache: { maxAge: 300, swr: true } },
     '/api/data.json': { prerender: true, cache: { maxAge: 300, swr: true } },
     '/zona-segura': { redirect: { to: '/entorno-seguro', statusCode: 301 } }
