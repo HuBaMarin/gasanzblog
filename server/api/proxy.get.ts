@@ -1,17 +1,27 @@
 import { defineEventHandler, getQuery, createError, setResponseHeaders, sendStream } from 'h3'
 import { Readable } from 'node:stream'
 
+// Allow any subdomain depth under Instagram/Facebook CDNs
 const ALLOWED_HOST_PATTERNS: RegExp[] = [
-  /^scontent-[a-zA-Z0-9-]+\.fbcdn\.net$/i,
-  /^[a-zA-Z0-9-]+\.fbcdn\.net$/i,
-  /^video-[a-zA-Z0-9-]+\.cdninstagram\.com$/i,
-  /^video\.cdninstagram\.com$/i,
-  /^scontent-[a-zA-Z0-9-]+\.cdninstagram\.com$/i,
-  /^scontent\.cdninstagram\.com$/i,
+  /^([a-zA-Z0-9-]+\.)*fbcdn\.net$/i,
+  /^([a-zA-Z0-9-]+\.)*cdninstagram\.com$/i,
 ]
 
 function isAllowedHost(hostname: string): boolean {
   return ALLOWED_HOST_PATTERNS.some((re) => re.test(hostname))
+}
+
+function extIsAllowedFromUrl(u: URL): boolean {
+  const p = (u.pathname + u.search).toLowerCase()
+  return (
+    p.endsWith('.mp4') ||
+    p.endsWith('.webm') ||
+    p.endsWith('.mov') ||
+    p.endsWith('.jpg') ||
+    p.endsWith('.jpeg') ||
+    p.endsWith('.png') ||
+    p.endsWith('.webp')
+  )
 }
 
 export default defineEventHandler(async (event) => {
@@ -43,9 +53,10 @@ export default defineEventHandler(async (event) => {
 
   const headers: Record<string, string> = {
     'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit(537.36) Chrome/120.0.0.0 Safari/537.36',
     accept: '*/*',
     referer: 'https://www.instagram.com/',
+    origin: 'https://www.instagram.com',
     'accept-language': 'en-US,en;q=0.9',
   }
 
@@ -65,9 +76,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase()
-  const isAllowedType = contentType.startsWith('video/') || contentType.startsWith('image/')
-  if (!isAllowedType) {
+  const isVideoOrImage = contentType.startsWith('video/') || contentType.startsWith('image/')
+  const isOctet = contentType.startsWith('application/octet-stream') || contentType.startsWith('binary/octet-stream')
+  if (!isVideoOrImage && !(isOctet && extIsAllowedFromUrl(target))) {
     throw createError({ statusCode: 415, statusMessage: 'Unsupported media type' })
+  }
+
+  // Optional guard: avoid proxying extremely large files (e.g., > 250MB)
+  const cl = res.headers.get('content-length')
+  const maxBytes = 250 * 1024 * 1024
+  if (cl) {
+    const size = Number(cl)
+    if (!Number.isNaN(size) && size > maxBytes) {
+      throw createError({ statusCode: 413, statusMessage: 'Media too large' })
+    }
   }
 
   // Pass-through critical headers for streaming and caching
@@ -90,6 +112,22 @@ export default defineEventHandler(async (event) => {
     pass['Cache-Control'] = 'public, max-age=3600'
   }
 
+  // Add Vary for Range requests
+  pass['Vary'] = pass['Vary'] ? pass['Vary'] + ', Range' : 'Range'
+
+  // If upstream returns octet-stream but URL indicates a known media type, set a better Content-Type
+  const ct = (res.headers.get('content-type') || '').toLowerCase()
+  if (!pass['Content-Type'] || ct.startsWith('application/octet-stream') || ct.startsWith('binary/octet-stream')) {
+    const p = (target.pathname + target.search).toLowerCase()
+    if (p.includes('.mp4')) pass['Content-Type'] = 'video/mp4'
+    else if (p.includes('.webm')) pass['Content-Type'] = 'video/webm'
+    else if (p.includes('.mov')) pass['Content-Type'] = 'video/quicktime'
+    else if (p.includes('.jpg') || p.includes('.jpeg')) pass['Content-Type'] = 'image/jpeg'
+    else if (p.includes('.png')) pass['Content-Type'] = 'image/png'
+    else if (p.includes('.webp')) pass['Content-Type'] = 'image/webp'
+  }
+
+  pass['X-Proxy-Host'] = target.hostname
   setResponseHeaders(event, pass)
   event.node.res.statusCode = res.status
 

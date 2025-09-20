@@ -30,7 +30,8 @@ export default defineNuxtConfig({
 
   // Nitro: compress static/public assets in production
   nitro: {
-    compressPublicAssets: true
+    compressPublicAssets: true,
+    compatibilityDate: '2025-09-20'
   },
 
   // Prerender key static routes for faster delivery
