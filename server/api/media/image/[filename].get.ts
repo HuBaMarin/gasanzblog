@@ -3,7 +3,14 @@ import { defineEventHandler, getRouterParam, createError, sendStream, setRespons
 import { createReadStream, existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 
-const IMAGES_DIR = join(process.cwd(), 'storage/cache/instagram/images')
+function getBaseDir() {
+  const envDir = process.env.MEDIA_CACHE_DIR
+  if (envDir && envDir.trim()) return envDir
+  if (process.env.VERCEL) return '/tmp/instagram'
+  return join(process.cwd(), 'storage/cache/instagram')
+}
+
+const IMAGES_DIR = join(getBaseDir(), 'images')
 
 function mimeFromExt(ext: string): string {
   switch (ext.toLowerCase()) {

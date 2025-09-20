@@ -53,26 +53,39 @@ export default defineEventHandler(async (event) => {
 
   const headers: Record<string, string> = {
     'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit(537.36) Chrome/120.0.0.0 Safari/537.36',
-    accept: '*/*',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    accept: 'video/mp4,video/*;q=0.9,image/*;q=0.8,*/*;q=0.7',
     referer: 'https://www.instagram.com/',
     origin: 'https://www.instagram.com',
-    'accept-language': 'en-US,en;q=0.9',
+    'accept-language': 'en-US,en;q=0.9,es-ES;q=0.8,es;q=0.7',
+    'accept-encoding': 'identity',
   }
 
   const range = event.node.req.headers['range']
-  if (typeof range === 'string') headers['range'] = range
+  const hadClientRange = typeof range === 'string' && range.trim() !== ''
+  if (hadClientRange) headers['range'] = range as string
+  else headers['range'] = 'bytes=0-'
 
-  let res: Response
-  try {
-    res = await fetch(target.toString(), { method, headers })
-  } catch (err) {
-    throw createError({ statusCode: 502, statusMessage: 'Upstream fetch failed' })
+  // Fetch helper with headers clone to toggle range if needed
+  const doFetch = async (withRange: boolean) => {
+    const h: Record<string, string> = { ...headers }
+    if (!withRange) delete h['range']
+    return fetch(target.toString(), { method, headers: h })
   }
 
-  // Accept 200 OK or 206 Partial Content for ranged requests
-  if (!res.ok && res.status !== 206) {
-    throw createError({ statusCode: res.status || 502, statusMessage: `Upstream error ${res.status}` })
+  let res: Response | null = null
+  try {
+    res = await doFetch(true)
+    if (!res.ok && res.status !== 206) {
+      // Retry once toggling Range header (some CDNs are picky)
+      const retry = await doFetch(false)
+      if (!retry.ok && retry.status !== 206) {
+        throw createError({ statusCode: retry.status || 502, statusMessage: `Upstream error ${retry.status}` })
+      }
+      res = retry
+    }
+  } catch {
+    throw createError({ statusCode: 502, statusMessage: 'Upstream fetch failed' })
   }
 
   const contentType = (res.headers.get('content-type') || '').toLowerCase()

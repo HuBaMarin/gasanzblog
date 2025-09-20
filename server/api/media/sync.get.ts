@@ -1,11 +1,19 @@
 // server/api/instagram/sync.get.ts
-import { defineEventHandler, createError } from 'h3'
+import { defineEventHandler, createError, getQuery } from 'h3'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import crypto from 'node:crypto'
+import { put } from '@vercel/blob'
 
-const BASE_DIR = join(process.cwd(), 'storage/cache/instagram')
+function getBaseDir() {
+  const envDir = process.env.MEDIA_CACHE_DIR
+  if (envDir && envDir.trim()) return envDir
+  if (process.env.VERCEL) return '/tmp/instagram'
+  return join(process.cwd(), 'storage/cache/instagram')
+}
+
+const BASE_DIR = getBaseDir()
 const VIDEOS_DIR = join(BASE_DIR, 'videos')
 const IMAGES_DIR = join(BASE_DIR, 'images')
 const DATA_DIR = join(BASE_DIR, 'data')
@@ -62,7 +70,7 @@ function safeBaseId(item: any): string {
   return crypto.createHash('md5').update(String(base)).digest('hex').slice(0, 12)
 }
 
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   try {
     await ensureDirs()
 
@@ -71,10 +79,15 @@ export default defineEventHandler(async () => {
       'https://api.apify.com/v2/datasets/xACE0vd7QjtiPPOIB/items?format=json&clean=true'
     )
 
+    // Optional limit
+    const q = getQuery(event)
+    const limit = Math.max(0, Math.min(200, Number(q.limit || 0)))
+    const working = limit > 0 ? items.slice(0, limit) : items
+
     const processedItems: any[] = []
 
     // 2) Process each item
-    for (const raw of items) {
+    for (const raw of working) {
       const item = { ...raw }
       const baseId = safeBaseId(item)
 
@@ -99,10 +112,26 @@ export default defineEventHandler(async () => {
             }
 
             const ab = await res.arrayBuffer()
-            await writeFile(fullPath, Buffer.from(ab))
-          }
+            const buf = Buffer.from(ab)
 
-          item.localVideoUrl = `/api/media/video/${filename}`
+            const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+            if (USE_BLOB) {
+              const key = `instagram/videos/${filename}`
+              const uploaded = await put(key, buf, {
+                access: 'public',
+                contentType: videoMimeFromExt(ext),
+                token: process.env.BLOB_READ_WRITE_TOKEN,
+              })
+              item.localVideoUrl = uploaded.url
+            } else {
+              await writeFile(fullPath, buf)
+              item.localVideoUrl = `/api/media/video/${filename}`
+            }
+          }
+          if (!item.localVideoUrl) {
+            // If file existed and we didn't upload just now, fallback to local API path
+            item.localVideoUrl = `/api/media/video/${filename}`
+          }
         } catch (err) {
           console.error(`Failed to download video for item ${item.id || baseId}:`, err)
         }
@@ -127,10 +156,24 @@ export default defineEventHandler(async () => {
             }
 
             const ab = await res.arrayBuffer()
-            await writeFile(fullPath, Buffer.from(ab))
+            const buf = Buffer.from(ab)
+            const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+            if (USE_BLOB) {
+              const key = `instagram/images/${filename}`
+              const uploaded = await put(key, buf, {
+                access: 'public',
+                contentType: imageMimeFromExt(ext),
+                token: process.env.BLOB_READ_WRITE_TOKEN,
+              })
+              item.localDisplayUrl = uploaded.url
+            } else {
+              await writeFile(fullPath, buf)
+              item.localDisplayUrl = `/api/media/image/${filename}`
+            }
           }
-
-          item.localDisplayUrl = `/api/media/image/${filename}`
+          if (!item.localDisplayUrl) {
+            item.localDisplayUrl = `/api/media/image/${filename}`
+          }
         } catch (err) {
           console.error(`Failed to download image for item ${item.id || baseId}:`, err)
         }
@@ -140,9 +183,24 @@ export default defineEventHandler(async () => {
     }
 
     // 3) Save data snapshot
+    const dataJson = JSON.stringify(processedItems, null, 2)
     const dataFilename = `data_${Date.now()}.json`
-    await writeFile(join(DATA_DIR, dataFilename), JSON.stringify(processedItems, null, 2))
-    await writeFile(join(DATA_DIR, 'latest.json'), JSON.stringify(processedItems, null, 2))
+    await writeFile(join(DATA_DIR, dataFilename), dataJson)
+    await writeFile(join(DATA_DIR, 'latest.json'), dataJson)
+
+    // Also publish latest.json to Vercel Blob if available for cross-instance access
+    try {
+      const USE_BLOB = Boolean(process.env.VERCEL) || Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+      if (USE_BLOB) {
+        await put('instagram/data/latest.json', dataJson, {
+          access: 'public',
+          contentType: 'application/json',
+          token: process.env.BLOB_READ_WRITE_TOKEN,
+        })
+      }
+    } catch (e) {
+      console.warn('Failed to upload latest.json to Blob:', e)
+    }
 
     return {
       success: true,

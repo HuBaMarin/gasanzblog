@@ -3,7 +3,14 @@ import { stat } from 'node:fs/promises'
 import { createReadStream, existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 
-const VIDEOS_DIR = join(process.cwd(), 'storage/cache/instagram/videos')
+function getBaseDir() {
+  const envDir = process.env.MEDIA_CACHE_DIR
+  if (envDir && envDir.trim()) return envDir
+  if (process.env.VERCEL) return '/tmp/instagram'
+  return join(process.cwd(), 'storage/cache/instagram')
+}
+
+const VIDEOS_DIR = join(getBaseDir(), 'videos')
 
 function mimeFromExt(ext: string): string {
   switch (ext.toLowerCase()) {

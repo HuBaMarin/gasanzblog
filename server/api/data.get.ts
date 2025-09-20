@@ -1,4 +1,5 @@
 import { defineEventHandler, getQuery, setResponseHeaders } from 'h3'
+import { list } from '@vercel/blob'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -16,12 +17,24 @@ export default defineEventHandler(async (event) => {
     return mostLiked
   }
 
-  // If local cache not present, fallback to remote dataset (safe, read-only)
+  // If local cache not present, try Vercel Blob first, then fallback to remote dataset
   if (!existsSync(LATEST_PATH)) {
     try {
-      const items = await $fetch<any[]>(
-        'https://api.apify.com/v2/datasets/xACE0vd7QjtiPPOIB/items?format=json&clean=true'
-      )
+      // Check Blob store for latest.json
+      const token = process.env.BLOB_READ_WRITE_TOKEN
+      const blobs = await list({ prefix: 'instagram/data/latest.json', token: token || undefined })
+      const blob = blobs.blobs?.[0]
+      if (blob?.url) {
+        const items = await $fetch<any[]>(blob.url, { headers: { accept: 'application/json' } })
+        setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
+        return { success: true, mostLiked: toResponse(items), cached: true }
+      }
+    } catch (e) {
+      // ignore and fallback below
+    }
+
+    try {
+      const items = await $fetch<any[]>('https://api.apify.com/v2/datasets/xACE0vd7QjtiPPOIB/items?format=json&clean=true')
       setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
       return { success: true, mostLiked: toResponse(items), cached: false }
     } catch {
