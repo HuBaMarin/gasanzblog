@@ -107,7 +107,7 @@ const { data, pending, error, refresh } = await useFetch<{
   success: boolean
   mostLiked: Post[]
   cached: boolean
-}>('/api/data?limit=12', {
+}>('/api/data?limit=30', {
   server: true, 
   lazy: true,   
 })
