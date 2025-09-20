@@ -22,7 +22,31 @@ function safeBaseId(item: any): string {
   return crypto.createHash('md5').update(String(base)).digest('hex').slice(0, 12)
 }
 
-function withLocalPaths(items: any[]): any[] {
+async function listFilenames(prefix: string, token?: string): Promise<Set<string>> {
+  const names = new Set<string>()
+  try {
+    const res = await list({ prefix, token: token || undefined })
+    for (const b of res.blobs || []) {
+      const pathname = (b as any).pathname as string | undefined
+      let name = ''
+      if (pathname && pathname.startsWith(prefix)) {
+        name = pathname.slice(prefix.length)
+      } else {
+        try {
+          const u = new URL((b as any).url)
+          const parts = u.pathname.split('/')
+          name = parts[parts.length - 1] || ''
+        } catch {}
+      }
+      if (name) names.add(name)
+    }
+  } catch {
+    // ignore listing errors
+  }
+  return names
+}
+
+function withLocalPaths(items: any[], blobVideos?: Set<string>, blobImages?: Set<string>): any[] {
   const videoExts = ['.mp4', '.webm', '.mov']
   const imageExts = ['.jpg', '.jpeg', '.png', '.webp']
   return items.map((it) => {
@@ -38,6 +62,10 @@ function withLocalPaths(items: any[]): any[] {
           item.localVideoUrl = `/api/media/video/${fname}`
           break
         }
+        if (blobVideos && blobVideos.has(fname)) {
+          item.localVideoUrl = `/api/media/video/${fname}`
+          break
+        }
       }
     }
 
@@ -46,6 +74,10 @@ function withLocalPaths(items: any[]): any[] {
         const fname = `${baseId}_thumb${ext}`
         const fpath = join(IMAGES_DIR, fname)
         if (existsSync(fpath)) {
+          item.localDisplayUrl = `/api/media/image/${fname}`
+          break
+        }
+        if (blobImages && blobImages.has(fname)) {
           item.localDisplayUrl = `/api/media/image/${fname}`
           break
         }
@@ -67,6 +99,13 @@ export default defineEventHandler(async (event) => {
     return mostLiked
   }
 
+  // Pre-list Blob filenames (optional enrichment when local files are absent)
+  let blobVideoSet: Set<string> | undefined
+  let blobImageSet: Set<string> | undefined
+  const token = process.env.BLOB_READ_WRITE_TOKEN
+  try { blobVideoSet = await listFilenames('instagram/videos/', token) } catch {}
+  try { blobImageSet = await listFilenames('instagram/images/', token) } catch {}
+
   // If local cache not present, try Vercel Blob first, then fallback to remote dataset
   if (!existsSync(LATEST_PATH)) {
     try {
@@ -77,7 +116,7 @@ export default defineEventHandler(async (event) => {
       if (blob?.url) {
         const items = await $fetch<any[]>(blob.url, { headers: { accept: 'application/json' } })
         setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
-        return { success: true, mostLiked: toResponse(withLocalPaths(items)), cached: true }
+        return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: true }
       }
     } catch (e) {
       // ignore and fallback below
@@ -87,7 +126,7 @@ export default defineEventHandler(async (event) => {
       const DATASET_URL = `https://api.apify.com/v2/datasets/EQ72boqcTz81HGI9Y/items?format=json&clean=true`
       const items = await $fetch<any[]>(DATASET_URL)
       setResponseHeaders(event, { 'Cache-Control': 'public, max-age=300' })
-      return { success: true, mostLiked: toResponse(withLocalPaths(items)), cached: false }
+      return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: false }
     } catch {
       setResponseHeaders(event, { 'Cache-Control': 'public, max-age=60' })
       return { success: true, mostLiked: [], cached: false }
@@ -97,5 +136,5 @@ export default defineEventHandler(async (event) => {
   const raw = await readFile(LATEST_PATH, 'utf-8')
   const items = JSON.parse(raw)
   setResponseHeaders(event, { 'Cache-Control': 'public, max-age=120' })
-  return { success: true, mostLiked: toResponse(withLocalPaths(items)), cached: true }
+  return { success: true, mostLiked: toResponse(withLocalPaths(items, blobVideoSet, blobImageSet)), cached: true }
 })
