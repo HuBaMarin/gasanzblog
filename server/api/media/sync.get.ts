@@ -220,6 +220,7 @@ export default defineEventHandler(async (event) => {
                 access: 'public',
                 contentType: videoMimeFromExt(extname(filename)),
                 token: process.env.BLOB_READ_WRITE_TOKEN,
+                addRandomSuffix: false,
               })
             }
             // Always prefer local API path (served by our domain)
@@ -259,6 +260,7 @@ export default defineEventHandler(async (event) => {
                 access: 'public',
                 contentType: imageMimeFromExt(ext),
                 token: process.env.BLOB_READ_WRITE_TOKEN,
+                addRandomSuffix: false,
               })
             } else {
               await writeFile(fullPath, buf)
@@ -289,6 +291,7 @@ export default defineEventHandler(async (event) => {
           access: 'public',
           contentType: 'application/json',
           token: process.env.BLOB_READ_WRITE_TOKEN,
+          addRandomSuffix: false,
         })
       }
     } catch (e) {

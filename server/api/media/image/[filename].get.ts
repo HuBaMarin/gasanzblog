@@ -1,4 +1,3 @@
-// server/api/media/image/[filename].get.ts
 import { defineEventHandler, getRouterParam, createError, sendStream, setResponseHeaders } from 'h3'
 import { createReadStream, existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
@@ -34,15 +33,35 @@ export default defineEventHandler(async (event) => {
 
   const filePath = join(IMAGES_DIR, filename)
   if (!existsSync(filePath)) {
-    // Fallback to Blob
+    // Fallback to Blob (support versioned filenames with hashed suffixes)
     try {
       const token = process.env.BLOB_READ_WRITE_TOKEN
-      const key = `instagram/images/${filename}`
-      const blobs = await list({ prefix: key, token: token || undefined })
-      const blob = blobs.blobs?.[0]
-      if (!blob?.url) throw new Error('Blob not found')
+      const ext = extname(filename)
+      const base = filename.slice(0, Math.max(0, filename.length - ext.length))
+      const prefixes = [
+        `instagram/images/${filename}`,
+        `instagram/images/${base}-`,
+        `instagram/images/${base}`,
+      ]
 
-      const res = await fetch(blob.url, { headers: { accept: 'image/*;q=0.9,*/*;q=0.7' } })
+      let blobUrl: string | null = null
+      for (const p of prefixes) {
+        const resList = await list({ prefix: p, token: token || undefined })
+        const candidates = (resList.blobs || []) as any[]
+        if (candidates.length) {
+          const chosen =
+            candidates.find((b) => {
+              const u: string | undefined = (b as any).url
+              const pn: string | undefined = (b as any).pathname
+              return (u && u.toLowerCase().endsWith(ext.toLowerCase())) || (pn && pn.toLowerCase().endsWith(ext.toLowerCase()))
+            }) || candidates[0]
+          blobUrl = (chosen as any).url
+          break
+        }
+      }
+      if (!blobUrl) throw new Error('Blob not found')
+
+      const res = await fetch(blobUrl, { headers: { accept: 'image/*;q=0.9,*/*;q=0.7' } })
       if (!res.ok) throw createError({ statusCode: res.status || 502, statusMessage: `Upstream error ${res.status}` })
 
       const pass: Record<string, string> = {}

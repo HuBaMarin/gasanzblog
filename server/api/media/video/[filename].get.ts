@@ -34,21 +34,40 @@ export default defineEventHandler(async (event) => {
   const filePath = join(VIDEOS_DIR, filename)
   const range = event.node.req.headers.range
 
-  // Fallback to Blob if local file doesn't exist (for serverless/ephemeral fs)
   if (!existsSync(filePath)) {
     try {
       const token = process.env.BLOB_READ_WRITE_TOKEN
-      const key = `instagram/videos/${filename}`
-      const blobs = await list({ prefix: key, token: token || undefined })
-      const blob = blobs.blobs?.[0]
-      if (!blob?.url) throw new Error('Blob not found')
+      const ext = extname(filename)
+      const base = filename.slice(0, Math.max(0, filename.length - ext.length))
+      const prefixes = [
+        `instagram/videos/${filename}`,
+        `instagram/videos/${base}-`,
+        `instagram/videos/${base}`,
+      ]
+
+      let blobUrl: string | null = null
+      for (const p of prefixes) {
+        const res = await list({ prefix: p, token: token || undefined })
+        const candidates = (res.blobs || []) as any[]
+        if (candidates.length) {
+          const chosen =
+            candidates.find((b) => {
+              const u: string | undefined = (b as any).url
+              const pn: string | undefined = (b as any).pathname
+              return (u && u.toLowerCase().endsWith(ext.toLowerCase())) || (pn && pn.toLowerCase().endsWith(ext.toLowerCase()))
+            }) || candidates[0]
+          blobUrl = (chosen as any).url
+          break
+        }
+      }
+      if (!blobUrl) throw new Error('Blob not found')
 
       const headers: Record<string, string> = {
         accept: 'video/mp4,video/*;q=0.9,*/*;q=0.7',
       }
       if (typeof range === 'string' && range.trim() !== '') headers['range'] = range
 
-      const res = await fetch(blob.url, { headers })
+      const res = await fetch(blobUrl, { headers })
       if (!res.ok && res.status !== 206) {
         throw createError({ statusCode: res.status || 502, statusMessage: `Upstream error ${res.status}` })
       }

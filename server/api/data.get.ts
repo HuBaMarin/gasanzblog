@@ -62,9 +62,12 @@ function withLocalPaths(items: any[], blobVideos?: Set<string>, blobImages?: Set
           item.localVideoUrl = `/api/media/video/${fname}`
           break
         }
-        if (blobVideos && blobVideos.has(fname)) {
-          item.localVideoUrl = `/api/media/video/${fname}`
-          break
+        if (blobVideos && blobVideos.size) {
+          const match = Array.from(blobVideos).find((n) => n === fname || (n.startsWith(`${baseId}_video-`) && n.toLowerCase().endsWith(ext.toLowerCase())))
+          if (match) {
+            item.localVideoUrl = `/api/media/video/${match}`
+            break
+          }
         }
       }
     }
@@ -77,9 +80,12 @@ function withLocalPaths(items: any[], blobVideos?: Set<string>, blobImages?: Set
           item.localDisplayUrl = `/api/media/image/${fname}`
           break
         }
-        if (blobImages && blobImages.has(fname)) {
-          item.localDisplayUrl = `/api/media/image/${fname}`
-          break
+        if (blobImages && blobImages.size) {
+          const match = Array.from(blobImages).find((n) => n === fname || (n.startsWith(`${baseId}_thumb-`) && n.toLowerCase().endsWith(ext.toLowerCase())))
+          if (match) {
+            item.localDisplayUrl = `/api/media/image/${match}`
+            break
+          }
         }
       }
     }
