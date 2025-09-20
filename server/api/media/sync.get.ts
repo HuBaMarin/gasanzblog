@@ -5,8 +5,8 @@ import { existsSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import crypto from 'node:crypto'
 import { put } from '@vercel/blob'
-import ffmpegStatic from 'ffmpeg-static'
 import { spawn } from 'node:child_process'
+import { createRequire } from 'node:module'
 
 function getBaseDir() {
   const envDir = process.env.MEDIA_CACHE_DIR
@@ -21,8 +21,25 @@ const IMAGES_DIR = join(BASE_DIR, 'images')
 const DATA_DIR = join(BASE_DIR, 'data')
 const TMP_DIR = join(BASE_DIR, 'tmp')
 
+const _require = createRequire(import.meta.url)
+
 function getFfmpegPath(): string {
-  return (typeof ffmpegStatic === 'string' && ffmpegStatic) ? ffmpegStatic : 'ffmpeg'
+  // Allow explicit override
+  const envPath = process.env.FFMPEG_PATH
+  if (envPath && envPath.trim()) return envPath
+
+  // On Vercel, the ffmpeg-static binary is typically stripped due to size limits.
+  // Avoid importing it to prevent runtime crashes when the file is missing.
+  if (process.env.VERCEL) return 'ffmpeg'
+
+  try {
+    const mod = _require('ffmpeg-static') as unknown
+    const bin = (mod as any)?.default ?? mod
+    if (typeof bin === 'string' && bin) return bin
+  } catch {
+    // ignore and fall back
+  }
+  return 'ffmpeg'
 }
 
 function useBlobStorage(): boolean {
@@ -97,7 +114,6 @@ async function ensureDirs() {
 }
 
 async function compressToMp4(inputPath: string, outputPath: string): Promise<void> {
-  // Transcode to H.264 + AAC, limit width to 1280, keep aspect, and enable faststart for progressive streaming
   const bin = getFfmpegPath()
   const args = [
     '-y',
